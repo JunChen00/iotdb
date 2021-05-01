@@ -35,7 +35,9 @@ import org.apache.iotdb.tsfile.file.metadata.enums.TSEncoding;
 import org.apache.iotdb.tsfile.read.common.RowRecord;
 import org.apache.iotdb.tsfile.utils.Binary;
 import org.apache.iotdb.tsfile.write.record.Tablet;
+import org.apache.iotdb.tsfile.write.schema.IMeasurementSchema;
 import org.apache.iotdb.tsfile.write.schema.MeasurementSchema;
+import org.apache.iotdb.tsfile.write.schema.VectorMeasurementSchema;
 
 import org.junit.After;
 import org.junit.Assert;
@@ -44,7 +46,9 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -108,7 +112,7 @@ public class IoTDBSessionSimpleIT {
     session = new Session("127.0.0.1", 6667, "root", "root");
     session.open();
 
-    List<MeasurementSchema> schemaList = new ArrayList<>();
+    List<IMeasurementSchema> schemaList = new ArrayList<>();
     schemaList.add(new MeasurementSchema("s1", TSDataType.INT64));
     schemaList.add(new MeasurementSchema("s2", TSDataType.DOUBLE));
     schemaList.add(new MeasurementSchema("s3", TSDataType.TEXT));
@@ -369,6 +373,58 @@ public class IoTDBSessionSimpleIT {
   }
 
   @Test
+  public void testInsertTabletWithAlignedTimeseries()
+      throws IoTDBConnectionException, StatementExecutionException {
+    session = new Session("127.0.0.1", 6667, "root", "root");
+    session.open();
+    List<IMeasurementSchema> schemaList = new ArrayList<>();
+    schemaList.add(new MeasurementSchema("s0", TSDataType.INT64));
+    schemaList.add(
+        new VectorMeasurementSchema(
+            new String[] {"s1", "s2", "s3"},
+            new TSDataType[] {TSDataType.INT64, TSDataType.INT32, TSDataType.TEXT}));
+    schemaList.add(new MeasurementSchema("s4", TSDataType.INT32));
+
+    Tablet tablet = new Tablet("root.sg1.d1", schemaList);
+    long timestamp = System.currentTimeMillis();
+
+    for (long row = 0; row < 10; row++) {
+      int rowIndex = tablet.rowSize++;
+      tablet.addTimestamp(rowIndex, timestamp);
+      tablet.addValue(
+          schemaList.get(0).getMeasurementId(), rowIndex, new SecureRandom().nextLong());
+      tablet.addValue(
+          schemaList.get(1).getValueMeasurementIdList().get(0),
+          rowIndex,
+          new SecureRandom().nextLong());
+      tablet.addValue(
+          schemaList.get(1).getValueMeasurementIdList().get(1),
+          rowIndex,
+          new SecureRandom().nextInt());
+      tablet.addValue(
+          schemaList.get(1).getValueMeasurementIdList().get(2), rowIndex, new Binary("test"));
+      tablet.addValue(schemaList.get(2).getMeasurementId(), rowIndex, new SecureRandom().nextInt());
+      timestamp++;
+    }
+
+    if (tablet.rowSize != 0) {
+      session.insertTablet(tablet);
+      tablet.reset();
+    }
+
+    SessionDataSet dataSet = session.executeQueryStatement("select count(*) from root");
+    while (dataSet.hasNext()) {
+      RowRecord rowRecord = dataSet.next();
+      Assert.assertEquals(10L, rowRecord.getFields().get(0).getLongV());
+      Assert.assertEquals(10L, rowRecord.getFields().get(1).getLongV());
+      Assert.assertEquals(10L, rowRecord.getFields().get(2).getLongV());
+      Assert.assertEquals(10L, rowRecord.getFields().get(3).getLongV());
+      Assert.assertEquals(10L, rowRecord.getFields().get(4).getLongV());
+    }
+    session.close();
+  }
+
+  @Test
   public void createTimeSeriesWithDoubleTicks()
       throws IoTDBConnectionException, StatementExecutionException {
     session = new Session("127.0.0.1", 6667, "root", "root");
@@ -417,6 +473,25 @@ public class IoTDBSessionSimpleIT {
     assertFalse(dataSet.hasNext());
 
     session.deleteStorageGroup(storageGroup);
+    session.close();
+  }
+
+  @Test
+  public void testDeleteNonExistTimeSeries()
+      throws StatementExecutionException, IoTDBConnectionException {
+    session = new Session("127.0.0.1", 6667, "root", "root");
+    session.open();
+    session.insertRecord(
+        "root.sg1.d1", 0, Arrays.asList("t1", "t2", "t3"), Arrays.asList("123", "333", "444"));
+    try {
+      session.deleteTimeseries(Arrays.asList("root.sg1.d1.t6", "root.sg1.d1.t2", "root.sg1.d1.t3"));
+    } catch (BatchExecutionException e) {
+      assertEquals("Path [root.sg1.d1.t6] does not exist;", e.getMessage());
+    }
+    assertTrue(session.checkTimeseriesExists("root.sg1.d1.t1"));
+    assertFalse(session.checkTimeseriesExists("root.sg1.d1.t2"));
+    assertFalse(session.checkTimeseriesExists("root.sg1.d1.t3"));
+
     session.close();
   }
 

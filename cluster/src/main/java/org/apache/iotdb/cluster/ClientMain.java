@@ -41,6 +41,7 @@ import org.apache.iotdb.service.rpc.thrift.TSProtocolVersion;
 import org.apache.iotdb.service.rpc.thrift.TSStatus;
 import org.apache.iotdb.session.SessionDataSet;
 import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
+import org.apache.iotdb.tsfile.write.schema.IMeasurementSchema;
 import org.apache.iotdb.tsfile.write.schema.MeasurementSchema;
 
 import org.apache.commons.cli.CommandLine;
@@ -86,7 +87,7 @@ public class ClientMain {
   private static Options options = new Options();
 
   private static String ip = "127.0.0.1";
-  private static int port = 55560;
+  private static int port = 6667;
 
   static {
     options.addOption(new Option(PARAM_INSERTION, "Perform insertion"));
@@ -115,7 +116,7 @@ public class ClientMain {
 
   private static final TSDataType[] DATA_TYPES = new TSDataType[] {TSDataType.DOUBLE};
 
-  private static List<MeasurementSchema> schemas;
+  private static List<IMeasurementSchema> schemas;
 
   private static final String[] DATA_QUERIES =
       new String[] {
@@ -203,7 +204,7 @@ public class ClientMain {
         queryPorts = parseIntArray(commandLine.getOptionValue(PARAM_QUERY_PORTS));
       }
       if (queryPorts == null) {
-        queryPorts = new int[] {55560, 55561, 55562};
+        queryPorts = new int[] {port, port + 1, port + 2};
       }
       for (int queryPort : queryPorts) {
         System.out.println("Test port: " + queryPort);
@@ -364,7 +365,7 @@ public class ClientMain {
   private static void registerTimeseries(long sessionId, Client client) throws TException {
     TSCreateTimeseriesReq req = new TSCreateTimeseriesReq();
     req.setSessionId(sessionId);
-    for (MeasurementSchema schema : schemas) {
+    for (IMeasurementSchema schema : schemas) {
       req.setDataType(schema.getType().ordinal());
       req.setEncoding(schema.getEncodingType().ordinal());
       req.setCompressor(schema.getCompressor().ordinal());

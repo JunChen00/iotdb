@@ -32,9 +32,11 @@ import org.apache.iotdb.db.metadata.PartialPath;
 import org.apache.iotdb.db.qp.physical.PhysicalPlan;
 import org.apache.iotdb.db.qp.physical.crud.InsertMultiTabletPlan;
 import org.apache.iotdb.db.qp.physical.crud.InsertRowPlan;
+import org.apache.iotdb.db.qp.physical.crud.InsertRowsPlan;
 import org.apache.iotdb.db.qp.physical.crud.InsertTabletPlan;
 import org.apache.iotdb.db.qp.physical.sys.AlterTimeSeriesPlan;
 import org.apache.iotdb.db.qp.physical.sys.CountPlan;
+import org.apache.iotdb.db.qp.physical.sys.CreateAlignedTimeSeriesPlan;
 import org.apache.iotdb.db.qp.physical.sys.CreateMultiTimeSeriesPlan;
 import org.apache.iotdb.db.qp.physical.sys.CreateTimeSeriesPlan;
 import org.apache.iotdb.db.qp.physical.sys.ShowChildPathsPlan;
@@ -52,6 +54,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 
 public class ClusterPlanRouter {
 
@@ -110,7 +113,9 @@ public class ClusterPlanRouter {
 
   public Map<PhysicalPlan, PartitionGroup> splitAndRoutePlan(PhysicalPlan plan)
       throws UnsupportedPlanException, MetadataException {
-    if (plan instanceof InsertTabletPlan) {
+    if (plan instanceof InsertRowsPlan) {
+      return splitAndRoutePlan((InsertRowsPlan) plan);
+    } else if (plan instanceof InsertTabletPlan) {
       return splitAndRoutePlan((InsertTabletPlan) plan);
     } else if (plan instanceof InsertMultiTabletPlan) {
       return splitAndRoutePlan((InsertMultiTabletPlan) plan);
@@ -118,6 +123,8 @@ public class ClusterPlanRouter {
       return splitAndRoutePlan((CountPlan) plan);
     } else if (plan instanceof CreateTimeSeriesPlan) {
       return splitAndRoutePlan((CreateTimeSeriesPlan) plan);
+    } else if (plan instanceof CreateAlignedTimeSeriesPlan) {
+      return splitAndRoutePlan((CreateAlignedTimeSeriesPlan) plan);
     } else if (plan instanceof InsertRowPlan) {
       return splitAndRoutePlan((InsertRowPlan) plan);
     } else if (plan instanceof AlterTimeSeriesPlan) {
@@ -153,6 +160,12 @@ public class ClusterPlanRouter {
   private Map<PhysicalPlan, PartitionGroup> splitAndRoutePlan(CreateTimeSeriesPlan plan)
       throws MetadataException {
     PartitionGroup partitionGroup = partitionTable.partitionByPathTime(plan.getPath(), 0);
+    return Collections.singletonMap(plan, partitionGroup);
+  }
+
+  private Map<PhysicalPlan, PartitionGroup> splitAndRoutePlan(CreateAlignedTimeSeriesPlan plan)
+      throws MetadataException {
+    PartitionGroup partitionGroup = partitionTable.partitionByPathTime(plan.getDevicePath(), 0);
     return Collections.singletonMap(plan, partitionGroup);
   }
 
@@ -227,6 +240,35 @@ public class ClusterPlanRouter {
     return result;
   }
 
+  /**
+   * @param insertRowsPlan InsertRowsPlan
+   * @return key is InsertRowsPlan, value is the partition group the plan belongs to, all
+   *     InsertRowPlans in InsertRowsPlan belongs to one same storage group.
+   */
+  private Map<PhysicalPlan, PartitionGroup> splitAndRoutePlan(InsertRowsPlan insertRowsPlan)
+      throws MetadataException {
+    Map<PhysicalPlan, PartitionGroup> result = new HashMap<>();
+    Map<PartitionGroup, InsertRowsPlan> groupPlanMap = new HashMap<>();
+    for (int i = 0; i < insertRowsPlan.getInsertRowPlanList().size(); i++) {
+      InsertRowPlan rowPlan = insertRowsPlan.getInsertRowPlanList().get(i);
+      PartialPath storageGroup = getMManager().getStorageGroupPath(rowPlan.getDeviceId());
+      PartitionGroup group = partitionTable.route(storageGroup.getFullPath(), rowPlan.getTime());
+      if (groupPlanMap.containsKey(group)) {
+        InsertRowsPlan tmpPlan = groupPlanMap.get(group);
+        tmpPlan.addOneInsertRowPlan(rowPlan, i);
+      } else {
+        InsertRowsPlan tmpPlan = new InsertRowsPlan();
+        tmpPlan.addOneInsertRowPlan(rowPlan, i);
+        groupPlanMap.put(group, tmpPlan);
+      }
+    }
+
+    for (Entry<PartitionGroup, InsertRowsPlan> entry : groupPlanMap.entrySet()) {
+      result.put(entry.getValue(), entry.getKey());
+    }
+    return result;
+  }
+
   @SuppressWarnings("SuspiciousSystemArraycopy")
   private Map<PhysicalPlan, PartitionGroup> splitAndRoutePlan(InsertTabletPlan plan)
       throws MetadataException {
@@ -277,7 +319,7 @@ public class ClusterPlanRouter {
       }
       long[] subTimes = new long[count];
       int destLoc = 0;
-      Object[] values = initTabletValues(plan.getMeasurements().length, count, plan.getDataTypes());
+      Object[] values = initTabletValues(plan.getDataTypes().length, count, plan.getDataTypes());
       for (int i = 0; i < locs.size(); i += 2) {
         int start = locs.get(i);
         int end = locs.get(i + 1);

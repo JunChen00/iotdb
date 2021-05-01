@@ -49,7 +49,7 @@ public class MaxValueAggrResult extends AggregateResult {
   }
 
   @Override
-  public void updateResultFromPageData(BatchData dataInThisPage) throws IOException {
+  public void updateResultFromPageData(BatchData dataInThisPage) {
     updateResultFromPageData(dataInThisPage, Long.MIN_VALUE, Long.MAX_VALUE);
   }
 
@@ -72,13 +72,21 @@ public class MaxValueAggrResult extends AggregateResult {
   public void updateResultUsingTimestamps(
       long[] timestamps, int length, IReaderByTimestamp dataReader) throws IOException {
     Comparable<Object> maxVal = null;
+    Object[] values = dataReader.getValuesInTimestamps(timestamps, length);
     for (int i = 0; i < length; i++) {
-      Object value = dataReader.getValueInTimestamp(timestamps[i]);
-      if (value == null) {
-        continue;
+      if (values[i] != null && (maxVal == null || maxVal.compareTo(values[i]) < 0)) {
+        maxVal = (Comparable<Object>) values[i];
       }
-      if (maxVal == null || maxVal.compareTo(value) < 0) {
-        maxVal = (Comparable<Object>) value;
+    }
+    updateResult(maxVal);
+  }
+
+  @Override
+  public void updateResultUsingValues(long[] timestamps, int length, Object[] values) {
+    Comparable<Object> maxVal = null;
+    for (int i = 0; i < length; i++) {
+      if (values[i] != null && (maxVal == null || maxVal.compareTo(values[i]) < 0)) {
+        maxVal = (Comparable<Object>) values[i];
       }
     }
     updateResult(maxVal);
@@ -98,7 +106,7 @@ public class MaxValueAggrResult extends AggregateResult {
   protected void deserializeSpecificFields(ByteBuffer buffer) {}
 
   @Override
-  protected void serializeSpecificFields(OutputStream outputStream) throws IOException {}
+  protected void serializeSpecificFields(OutputStream outputStream) {}
 
   private void updateResult(Comparable<Object> maxVal) {
     if (maxVal == null) {

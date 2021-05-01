@@ -22,12 +22,11 @@ import org.apache.iotdb.db.engine.querycontext.ReadOnlyMemChunk;
 import org.apache.iotdb.db.engine.storagegroup.TsFileResource;
 import org.apache.iotdb.db.metadata.PartialPath;
 import org.apache.iotdb.db.query.context.QueryContext;
-import org.apache.iotdb.tsfile.file.metadata.ChunkMetadata;
-import org.apache.iotdb.tsfile.file.metadata.TimeseriesMetadata;
+import org.apache.iotdb.tsfile.file.metadata.IChunkMetadata;
+import org.apache.iotdb.tsfile.file.metadata.ITimeSeriesMetadata;
 import org.apache.iotdb.tsfile.read.controller.IChunkMetadataLoader;
 import org.apache.iotdb.tsfile.read.filter.basic.Filter;
 
-import java.io.IOException;
 import java.util.List;
 
 public class MemChunkMetadataLoader implements IChunkMetadataLoader {
@@ -46,8 +45,8 @@ public class MemChunkMetadataLoader implements IChunkMetadataLoader {
   }
 
   @Override
-  public List<ChunkMetadata> loadChunkMetadataList(TimeseriesMetadata timeseriesMetadata) {
-    List<ChunkMetadata> chunkMetadataList = resource.getChunkMetadataList();
+  public List<IChunkMetadata> loadChunkMetadataList(ITimeSeriesMetadata timeseriesMetadata) {
+    List<IChunkMetadata> chunkMetadataList = resource.getChunkMetadataList();
 
     DiskChunkMetadataLoader.setDiskChunkLoader(chunkMetadataList, resource, seriesPath, context);
 
@@ -69,14 +68,14 @@ public class MemChunkMetadataLoader implements IChunkMetadataLoader {
                         chunkMetaData.getStartTime(), chunkMetaData.getEndTime()))
                 || chunkMetaData.getStartTime() > chunkMetaData.getEndTime());
 
-    for (ChunkMetadata metadata : chunkMetadataList) {
+    for (IChunkMetadata metadata : chunkMetadataList) {
       metadata.setVersion(resource.getVersion());
     }
     return chunkMetadataList;
   }
 
   @Override
-  public void setDiskChunkLoader(List<ChunkMetadata> chunkMetadataList) throws IOException {
-    // DO NOTHING
+  public boolean isMemChunkMetadataLoader() {
+    return true;
   }
 }

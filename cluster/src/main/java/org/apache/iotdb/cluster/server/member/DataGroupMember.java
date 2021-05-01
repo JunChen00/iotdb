@@ -28,6 +28,7 @@ import org.apache.iotdb.cluster.client.sync.SyncDataClient;
 import org.apache.iotdb.cluster.client.sync.SyncDataHeartbeatClient;
 import org.apache.iotdb.cluster.config.ClusterConstant;
 import org.apache.iotdb.cluster.config.ClusterDescriptor;
+import org.apache.iotdb.cluster.exception.CheckConsistencyException;
 import org.apache.iotdb.cluster.exception.LogExecutionException;
 import org.apache.iotdb.cluster.exception.SnapshotInstallationException;
 import org.apache.iotdb.cluster.log.LogApplier;
@@ -65,6 +66,7 @@ import org.apache.iotdb.cluster.server.monitor.NodeStatusManager;
 import org.apache.iotdb.cluster.server.monitor.Peer;
 import org.apache.iotdb.cluster.server.monitor.Timer;
 import org.apache.iotdb.cluster.server.monitor.Timer.Statistic;
+import org.apache.iotdb.cluster.utils.IOUtils;
 import org.apache.iotdb.cluster.utils.StatusUtils;
 import org.apache.iotdb.db.conf.IoTDBDescriptor;
 import org.apache.iotdb.db.engine.StorageEngine;
@@ -72,6 +74,7 @@ import org.apache.iotdb.db.engine.storagegroup.StorageGroupProcessor.TimePartiti
 import org.apache.iotdb.db.exception.StorageEngineException;
 import org.apache.iotdb.db.exception.metadata.IllegalPathException;
 import org.apache.iotdb.db.exception.metadata.StorageGroupNotSetException;
+import org.apache.iotdb.db.exception.metadata.UndefinedTemplateException;
 import org.apache.iotdb.db.metadata.PartialPath;
 import org.apache.iotdb.db.qp.executor.PlanExecutor;
 import org.apache.iotdb.db.qp.physical.PhysicalPlan;
@@ -160,7 +163,7 @@ public class DataGroupMember extends RaftMember {
       Node thisNode,
       MetaGroupMember metaGroupMember) {
     super(
-        "Data(" + nodes.getHeader().getIp() + ":" + nodes.getHeader().getMetaPort() + ")",
+        "Data(" + nodes.getHeader().getInternalIp() + ":" + nodes.getHeader().getMetaPort() + ")",
         new AsyncClientPool(new AsyncDataClient.FactoryAsync(factory)),
         new SyncClientPool(new SyncDataClient.FactorySync(factory)),
         new AsyncClientPool(new AsyncDataHeartbeatClient.FactoryAsync(factory)),
@@ -692,16 +695,38 @@ public class DataGroupMember extends RaftMember {
    */
   @Override
   public TSStatus executeNonQueryPlan(PhysicalPlan plan) {
-    TSStatus status = executeNonQueryPlanWithKnownLeader(plan);
-    if (!StatusUtils.NO_LEADER.equals(status)) {
-      return status;
+    if (ClusterDescriptor.getInstance().getConfig().getReplicationNum() == 1) {
+      try {
+        getLocalExecutor().processNonQuery(plan);
+        return StatusUtils.OK;
+      } catch (Exception e) {
+        Throwable cause = IOUtils.getRootCause(e);
+        if (cause instanceof StorageGroupNotSetException
+            || cause instanceof UndefinedTemplateException) {
+          try {
+            metaGroupMember.syncLeaderWithConsistencyCheck(true);
+            getLocalExecutor().processNonQuery(plan);
+            return StatusUtils.OK;
+          } catch (CheckConsistencyException ce) {
+            return StatusUtils.getStatus(StatusUtils.CONSISTENCY_FAILURE, ce.getMessage());
+          } catch (Exception ne) {
+            return handleLogExecutionException(plan, IOUtils.getRootCause(ne));
+          }
+        }
+        return handleLogExecutionException(plan, cause);
+      }
+    } else {
+      TSStatus status = executeNonQueryPlanWithKnownLeader(plan);
+      if (!StatusUtils.NO_LEADER.equals(status)) {
+        return status;
+      }
+
+      long startTime = Timer.Statistic.DATA_GROUP_MEMBER_WAIT_LEADER.getOperationStartTime();
+      waitLeader();
+      Timer.Statistic.DATA_GROUP_MEMBER_WAIT_LEADER.calOperationCostTimeFromStart(startTime);
+
+      return executeNonQueryPlanWithKnownLeader(plan);
     }
-
-    long startTime = Timer.Statistic.DATA_GROUP_MEMBER_WAIT_LEADER.getOperationStartTime();
-    waitLeader();
-    Timer.Statistic.DATA_GROUP_MEMBER_WAIT_LEADER.calOperationCostTimeFromStart(startTime);
-
-    return executeNonQueryPlanWithKnownLeader(plan);
   }
 
   private TSStatus executeNonQueryPlanWithKnownLeader(PhysicalPlan plan) {
@@ -717,7 +742,8 @@ public class DataGroupMember extends RaftMember {
       TSStatus result = forwardPlan(plan, leader.get(), getHeader());
       Timer.Statistic.DATA_GROUP_MEMBER_FORWARD_PLAN.calOperationCostTimeFromStart(startTime);
       if (!StatusUtils.NO_LEADER.equals(result)) {
-        result.setRedirectNode(new EndPoint(leader.get().getIp(), leader.get().getClientPort()));
+        result.setRedirectNode(
+            new EndPoint(leader.get().getClientIp(), leader.get().getClientPort()));
         return result;
       }
     }
@@ -744,17 +770,7 @@ public class DataGroupMember extends RaftMember {
           return slotSet.contains(slot);
         };
     for (PartialPath sg : allStorageGroupNames) {
-      try {
-        StorageEngine.getInstance().removePartitions(sg, filter);
-      } catch (StorageEngineException e) {
-        logger.warn(
-            "{}: failed to remove partitions of {} and {} other slots in {}",
-            name,
-            slots.get(0),
-            slots.size() - 1,
-            sg,
-            e);
-      }
+      StorageEngine.getInstance().removePartitions(sg, filter);
     }
     for (Integer slot : slots) {
       slotManager.setToNull(slot);

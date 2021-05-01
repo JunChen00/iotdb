@@ -20,6 +20,7 @@ package org.apache.iotdb.tsfile.file.metadata;
 
 import org.apache.iotdb.tsfile.constant.TestConstant;
 import org.apache.iotdb.tsfile.file.metadata.utils.TestHelper;
+import org.apache.iotdb.tsfile.utils.PublicBAOS;
 
 import org.junit.After;
 import org.junit.Before;
@@ -50,7 +51,7 @@ public class TimeSeriesMetadataTest {
   }
 
   @Test
-  public void testWriteIntoFile() throws IOException {
+  public void testWriteIntoFile() {
     TimeseriesMetadata timeseriesMetadata =
         TestHelper.createSimpleTimseriesMetaData(measurementUID);
     serialized(timeseriesMetadata);
@@ -68,7 +69,8 @@ public class TimeSeriesMetadataTest {
       ByteBuffer buffer = ByteBuffer.allocate((int) fch.size());
       fch.read(buffer);
       buffer.flip();
-      metaData = TimeseriesMetadata.deserializeFrom(buffer);
+      metaData = TimeseriesMetadata.deserializeFrom(buffer, true);
+      metaData.setChunkMetadataListBuffer(new PublicBAOS());
       return metaData;
     } catch (IOException e) {
       e.printStackTrace();

@@ -32,14 +32,9 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
 
-/**
- * @mail yuqi4733@gmail.com
- * @description your description
- * @time 14/12/20 上午11:05
- */
 public class IoTDBCompressTypeIT {
   @Before
-  public void setUp() throws Exception {
+  public void setUp() {
     EnvironmentUtils.closeStatMonitor();
     EnvironmentUtils.envSetUp();
   }

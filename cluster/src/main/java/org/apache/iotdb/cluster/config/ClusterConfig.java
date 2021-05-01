@@ -19,33 +19,37 @@
 package org.apache.iotdb.cluster.config;
 
 import org.apache.iotdb.cluster.utils.ClusterConsistent;
+import org.apache.iotdb.db.conf.IoTDBDescriptor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 public class ClusterConfig {
-
+  private static Logger logger = LoggerFactory.getLogger(ClusterConfig.class);
   static final String CONFIG_NAME = "iotdb-cluster.properties";
 
-  private String clusterRpcIp = "127.0.0.1";
+  private String internalIp;
   private int internalMetaPort = 9003;
   private int internalDataPort = 40010;
-  private int clusterRpcPort = 55560;
+  private int clusterRpcPort = IoTDBDescriptor.getInstance().getConfig().getRpcPort();
 
-  /** each one is a "<IP | domain name>:<meta port>:<data port>:<client port></>" string tuple */
-  private List<String> seedNodeUrls =
-      Arrays.asList(
-          "127.0.0.1:9003:40010:55560", "127.0.0.1:9005:40012:55561", "127.0.0.1:9007:40014:55562");
+  /** each one is a {internalIp | domain name}:{meta port} string tuple. */
+  private List<String> seedNodeUrls;
 
   @ClusterConsistent private boolean isRpcThriftCompressionEnabled = false;
   private int maxConcurrentClientNum = 10000;
 
-  @ClusterConsistent private int replicationNum = 2;
+  @ClusterConsistent private int replicationNum = 1;
 
   @ClusterConsistent private String clusterName = "default";
 
-  @ClusterConsistent private boolean useAsyncServer = true;
+  @ClusterConsistent private boolean useAsyncServer = false;
 
   private boolean useAsyncApplier = true;
 
@@ -55,21 +59,31 @@ public class ClusterConfig {
 
   private int writeOperationTimeoutMS = (int) TimeUnit.SECONDS.toMillis(30);
 
-  private int catchUpTimeoutMS = (int) TimeUnit.SECONDS.toMillis(60);
+  private int catchUpTimeoutMS = (int) TimeUnit.SECONDS.toMillis(300);
 
   private boolean useBatchInLogCatchUp = true;
 
   /** max number of committed logs to be saved */
-  private int minNumOfLogsInMem = 100;
+  private int minNumOfLogsInMem = 1000;
 
   /** max number of committed logs in memory */
-  private int maxNumOfLogsInMem = 1000;
+  private int maxNumOfLogsInMem = 2000;
+
+  /** max memory size of committed logs in memory, default 512M */
+  private long maxMemorySizeForRaftLog = 536870912;
 
   /** deletion check period of the submitted log */
   private int logDeleteCheckIntervalSecond = -1;
 
   /** max number of clients in a ClientPool of a member for one node. */
   private int maxClientPerNodePerMember = 1000;
+
+  /**
+   * If the number of connections created for a node exceeds `max_client_pernode_permember_number`,
+   * we need to wait so much time for other connections to be released until timeout, or a new
+   * connection will be created.
+   */
+  private long waitClientTimeoutMS = 5 * 1000L;
 
   /**
    * ClientPool will have so many selector threads (TAsyncClientManager) to distribute to its
@@ -132,7 +146,7 @@ public class ClusterConfig {
   /** The maximum number of logs saved on the disk */
   private int maxPersistRaftLogNumberOnDisk = 1_000_000;
 
-  private boolean enableUsePersistLogOnDiskToCatchUp = false;
+  private boolean enableUsePersistLogOnDiskToCatchUp = true;
 
   /**
    * The number of logs read on the disk at one time, which is mainly used to control the memory
@@ -147,12 +161,30 @@ public class ClusterConfig {
    */
   private boolean waitForSlowNode = true;
 
-  public int getSelectorNumOfClientPool() {
-    return selectorNumOfClientPool;
+  /**
+   * When consistency level is set to mid, query will fail if the log lag exceeds max_read_log_lag.
+   */
+  private long maxReadLogLag = 1000L;
+
+  private boolean openServerRpcPort = false;
+
+  /**
+   * create a clusterConfig class. The internalIP will be set according to the server's hostname. If
+   * there is something error for getting the ip of the hostname, then set the internalIp as
+   * localhost.
+   */
+  public ClusterConfig() {
+    try {
+      internalIp = InetAddress.getLocalHost().getHostAddress();
+    } catch (UnknownHostException e) {
+      logger.error(e.getMessage());
+      internalIp = "127.0.0.1";
+    }
+    seedNodeUrls = Arrays.asList(String.format("%s:%d", internalIp, internalMetaPort));
   }
 
-  public void setSelectorNumOfClientPool(int selectorNumOfClientPool) {
-    this.selectorNumOfClientPool = selectorNumOfClientPool;
+  public int getSelectorNumOfClientPool() {
+    return selectorNumOfClientPool;
   }
 
   public int getMaxClientPerNodePerMember() {
@@ -171,19 +203,11 @@ public class ClusterConfig {
     this.useBatchInLogCatchUp = useBatchInLogCatchUp;
   }
 
-  public String getClusterRpcIp() {
-    return clusterRpcIp;
-  }
-
-  void setClusterRpcIp(String clusterRpcIp) {
-    this.clusterRpcIp = clusterRpcIp;
-  }
-
   public int getInternalMetaPort() {
     return internalMetaPort;
   }
 
-  void setInternalMetaPort(int internalMetaPort) {
+  public void setInternalMetaPort(int internalMetaPort) {
     this.internalMetaPort = internalMetaPort;
   }
 
@@ -231,7 +255,7 @@ public class ClusterConfig {
     return internalDataPort;
   }
 
-  void setInternalDataPort(int internalDataPort) {
+  public void setInternalDataPort(int internalDataPort) {
     this.internalDataPort = internalDataPort;
   }
 
@@ -239,7 +263,7 @@ public class ClusterConfig {
     return clusterRpcPort;
   }
 
-  void setClusterRpcPort(int clusterRpcPort) {
+  public void setClusterRpcPort(int clusterRpcPort) {
     this.clusterRpcPort = clusterRpcPort;
   }
 
@@ -379,6 +403,14 @@ public class ClusterConfig {
     this.maxRaftLogIndexSizeInMemory = maxRaftLogIndexSizeInMemory;
   }
 
+  public long getMaxMemorySizeForRaftLog() {
+    return maxMemorySizeForRaftLog;
+  }
+
+  public void setMaxMemorySizeForRaftLog(long maxMemorySizeForRaftLog) {
+    this.maxMemorySizeForRaftLog = maxMemorySizeForRaftLog;
+  }
+
   public int getMaxRaftLogPersistDataSizePerFile() {
     return maxRaftLogPersistDataSizePerFile;
   }
@@ -423,7 +455,35 @@ public class ClusterConfig {
     return waitForSlowNode;
   }
 
-  public void setWaitForSlowNode(boolean waitForSlowNode) {
-    this.waitForSlowNode = waitForSlowNode;
+  public long getMaxReadLogLag() {
+    return maxReadLogLag;
+  }
+
+  public void setMaxReadLogLag(long maxReadLogLag) {
+    this.maxReadLogLag = maxReadLogLag;
+  }
+
+  public String getInternalIp() {
+    return internalIp;
+  }
+
+  public void setInternalIp(String internalIp) {
+    this.internalIp = internalIp;
+  }
+
+  public boolean isOpenServerRpcPort() {
+    return openServerRpcPort;
+  }
+
+  public void setOpenServerRpcPort(boolean openServerRpcPort) {
+    this.openServerRpcPort = openServerRpcPort;
+  }
+
+  public long getWaitClientTimeoutMS() {
+    return waitClientTimeoutMS;
+  }
+
+  public void setWaitClientTimeoutMS(long waitClientTimeoutMS) {
+    this.waitClientTimeoutMS = waitClientTimeoutMS;
   }
 }

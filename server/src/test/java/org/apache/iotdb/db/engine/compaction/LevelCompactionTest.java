@@ -23,7 +23,6 @@ import org.apache.iotdb.db.conf.IoTDBConstant;
 import org.apache.iotdb.db.conf.IoTDBDescriptor;
 import org.apache.iotdb.db.constant.TestConstant;
 import org.apache.iotdb.db.engine.cache.ChunkCache;
-import org.apache.iotdb.db.engine.cache.ChunkMetadataCache;
 import org.apache.iotdb.db.engine.cache.TimeSeriesMetadataCache;
 import org.apache.iotdb.db.engine.storagegroup.TsFileResource;
 import org.apache.iotdb.db.exception.StorageEngineException;
@@ -58,9 +57,9 @@ abstract class LevelCompactionTest {
 
   static final String COMPACTION_TEST_SG = "root.compactionTest";
 
-  int seqFileNum = 6;
+  protected int seqFileNum = 6;
   int unseqFileNum = 0;
-  int measurementNum = 10;
+  protected int measurementNum = 10;
   int deviceNum = 10;
   long ptNum = 100;
   long flushInterval = 20;
@@ -93,13 +92,12 @@ abstract class LevelCompactionTest {
         .getConfig()
         .setMergeChunkPointNumberThreshold(prevMergeChunkThreshold);
     ChunkCache.getInstance().clear();
-    ChunkMetadataCache.getInstance().clear();
     TimeSeriesMetadataCache.getInstance().clear();
     IoTDB.metaManager.clear();
     EnvironmentUtils.cleanAllDir();
   }
 
-  private void prepareSeries() throws MetadataException {
+  void prepareSeries() throws MetadataException {
     measurementSchemas = new MeasurementSchema[measurementNum];
     for (int i = 0; i < measurementNum; i++) {
       measurementSchemas[i] =
@@ -134,6 +132,8 @@ abstract class LevelCompactionTest {
                       + i
                       + IoTDBConstant.FILE_NAME_SEPARATOR
                       + 0
+                      + IoTDBConstant.FILE_NAME_SEPARATOR
+                      + 0
                       + ".tsfile"));
       TsFileResource tsFileResource = new TsFileResource(file);
       tsFileResource.setClosed(true);
@@ -150,10 +150,12 @@ abstract class LevelCompactionTest {
                       + (10000 + i)
                       + IoTDBConstant.FILE_NAME_SEPARATOR
                       + 0
+                      + IoTDBConstant.FILE_NAME_SEPARATOR
+                      + 0
                       + ".tsfile"));
       TsFileResource tsFileResource = new TsFileResource(file);
       tsFileResource.setClosed(true);
-      tsFileResource.updatePlanIndexes((long) (i + seqFileNum));
+      tsFileResource.updatePlanIndexes(i + seqFileNum);
       unseqResources.add(tsFileResource);
       prepareFile(tsFileResource, i * ptNum, ptNum * (i + 1) / unseqFileNum, 10000);
     }
@@ -166,10 +168,12 @@ abstract class LevelCompactionTest {
                     + unseqFileNum
                     + IoTDBConstant.FILE_NAME_SEPARATOR
                     + 0
+                    + IoTDBConstant.FILE_NAME_SEPARATOR
+                    + 0
                     + ".tsfile"));
     TsFileResource tsFileResource = new TsFileResource(file);
     tsFileResource.setClosed(true);
-    tsFileResource.updatePlanIndexes((long) (seqFileNum + unseqFileNum));
+    tsFileResource.updatePlanIndexes(seqFileNum + unseqFileNum);
     unseqResources.add(tsFileResource);
     prepareFile(tsFileResource, 0, ptNum * unseqFileNum, 20000);
   }

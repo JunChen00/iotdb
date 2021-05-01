@@ -19,6 +19,7 @@
 package org.apache.iotdb.db.qp.sql;
 
 import org.apache.iotdb.db.conf.IoTDBDescriptor;
+import org.apache.iotdb.db.engine.trigger.executor.TriggerEvent;
 import org.apache.iotdb.db.exception.index.UnsupportedIndexTypeException;
 import org.apache.iotdb.db.exception.runtime.SQLParserException;
 import org.apache.iotdb.db.index.common.IndexType;
@@ -44,12 +45,14 @@ import org.apache.iotdb.db.qp.logical.sys.CreateFunctionOperator;
 import org.apache.iotdb.db.qp.logical.sys.CreateIndexOperator;
 import org.apache.iotdb.db.qp.logical.sys.CreateSnapshotOperator;
 import org.apache.iotdb.db.qp.logical.sys.CreateTimeSeriesOperator;
+import org.apache.iotdb.db.qp.logical.sys.CreateTriggerOperator;
 import org.apache.iotdb.db.qp.logical.sys.DataAuthOperator;
 import org.apache.iotdb.db.qp.logical.sys.DeletePartitionOperator;
 import org.apache.iotdb.db.qp.logical.sys.DeleteStorageGroupOperator;
 import org.apache.iotdb.db.qp.logical.sys.DeleteTimeSeriesOperator;
 import org.apache.iotdb.db.qp.logical.sys.DropFunctionOperator;
 import org.apache.iotdb.db.qp.logical.sys.DropIndexOperator;
+import org.apache.iotdb.db.qp.logical.sys.DropTriggerOperator;
 import org.apache.iotdb.db.qp.logical.sys.FlushOperator;
 import org.apache.iotdb.db.qp.logical.sys.KillQueryOperator;
 import org.apache.iotdb.db.qp.logical.sys.LoadConfigurationOperator;
@@ -61,6 +64,7 @@ import org.apache.iotdb.db.qp.logical.sys.MoveFileOperator;
 import org.apache.iotdb.db.qp.logical.sys.RemoveFileOperator;
 import org.apache.iotdb.db.qp.logical.sys.SetStorageGroupOperator;
 import org.apache.iotdb.db.qp.logical.sys.SetTTLOperator;
+import org.apache.iotdb.db.qp.logical.sys.ShowChildNodesOperator;
 import org.apache.iotdb.db.qp.logical.sys.ShowChildPathsOperator;
 import org.apache.iotdb.db.qp.logical.sys.ShowDevicesOperator;
 import org.apache.iotdb.db.qp.logical.sys.ShowFunctionsOperator;
@@ -69,7 +73,11 @@ import org.apache.iotdb.db.qp.logical.sys.ShowOperator;
 import org.apache.iotdb.db.qp.logical.sys.ShowStorageGroupOperator;
 import org.apache.iotdb.db.qp.logical.sys.ShowTTLOperator;
 import org.apache.iotdb.db.qp.logical.sys.ShowTimeSeriesOperator;
+import org.apache.iotdb.db.qp.logical.sys.ShowTriggersOperator;
+import org.apache.iotdb.db.qp.logical.sys.StartTriggerOperator;
+import org.apache.iotdb.db.qp.logical.sys.StopTriggerOperator;
 import org.apache.iotdb.db.qp.logical.sys.TracingOperator;
+import org.apache.iotdb.db.qp.physical.crud.GroupByTimePlan;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.AggregationCallContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.AggregationElementContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.AliasClauseContext;
@@ -95,6 +103,7 @@ import org.apache.iotdb.db.qp.sql.SqlBaseParser.CreateIndexContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.CreateRoleContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.CreateSnapshotContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.CreateTimeseriesContext;
+import org.apache.iotdb.db.qp.sql.SqlBaseParser.CreateTriggerContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.CreateUserContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.DateExpressionContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.DeletePartitionContext;
@@ -104,6 +113,7 @@ import org.apache.iotdb.db.qp.sql.SqlBaseParser.DeleteTimeseriesContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.DropFunctionContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.DropIndexContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.DropRoleContext;
+import org.apache.iotdb.db.qp.sql.SqlBaseParser.DropTriggerContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.DropUserContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.FillClauseContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.FillStatementContext;
@@ -127,6 +137,7 @@ import org.apache.iotdb.db.qp.sql.SqlBaseParser.InClauseContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.IndexPredicateClauseContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.IndexWithClauseContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.InsertColumnsSpecContext;
+import org.apache.iotdb.db.qp.sql.SqlBaseParser.InsertMultiValueContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.InsertStatementContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.InsertValuesSpecContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.KillQueryContext;
@@ -145,6 +156,8 @@ import org.apache.iotdb.db.qp.sql.SqlBaseParser.ListUserPrivilegesContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.LoadConfigurationStatementContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.LoadFilesContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.LoadStatementContext;
+import org.apache.iotdb.db.qp.sql.SqlBaseParser.MeasurementNameContext;
+import org.apache.iotdb.db.qp.sql.SqlBaseParser.MeasurementValueContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.MergeContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.MoveFileContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.NodeNameContext;
@@ -169,6 +182,7 @@ import org.apache.iotdb.db.qp.sql.SqlBaseParser.SequenceClauseContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.SetStorageGroupContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.SetTTLStatementContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.ShowAllTTLStatementContext;
+import org.apache.iotdb.db.qp.sql.SqlBaseParser.ShowChildNodesContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.ShowChildPathsContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.ShowDevicesContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.ShowFlushTaskInfoContext;
@@ -178,6 +192,7 @@ import org.apache.iotdb.db.qp.sql.SqlBaseParser.ShowQueryProcesslistContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.ShowStorageGroupContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.ShowTTLStatementContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.ShowTimeseriesContext;
+import org.apache.iotdb.db.qp.sql.SqlBaseParser.ShowTriggersContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.ShowVersionContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.ShowWhereClauseContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.SingleStatementContext;
@@ -185,6 +200,8 @@ import org.apache.iotdb.db.qp.sql.SqlBaseParser.SlimitClauseContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.SlimitStatementContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.SoffsetClauseContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.SpecialLimitStatementContext;
+import org.apache.iotdb.db.qp.sql.SqlBaseParser.StartTriggerContext;
+import org.apache.iotdb.db.qp.sql.SqlBaseParser.StopTriggerContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.StringLiteralContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.SuffixPathContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.TableCallContext;
@@ -193,6 +210,7 @@ import org.apache.iotdb.db.qp.sql.SqlBaseParser.TagClauseContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.TimeIntervalContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.TracingOffContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.TracingOnContext;
+import org.apache.iotdb.db.qp.sql.SqlBaseParser.TriggerAttributeContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.TypeClauseContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.UdfAttributeContext;
 import org.apache.iotdb.db.qp.sql.SqlBaseParser.UdfCallContext;
@@ -246,7 +264,11 @@ public class IoTDBSqlVisitor extends SqlBaseBaseVisitor<Operator> {
 
   @Override
   public Operator visitSingleStatement(SingleStatementContext ctx) {
-    return visit(ctx.statement());
+    Operator operator = visit(ctx.statement());
+    if (ctx.DEBUG() != null) {
+      operator.setDebug(true);
+    }
+    return operator;
   }
 
   @Override
@@ -445,6 +467,55 @@ public class IoTDBSqlVisitor extends SqlBaseBaseVisitor<Operator> {
         new ShowFunctionsOperator(SQLConstant.TOK_SHOW_FUNCTIONS);
     showFunctionsOperator.setShowTemporary(ctx.TEMPORARY() != null);
     return showFunctionsOperator;
+  }
+
+  @Override
+  public Operator visitCreateTrigger(CreateTriggerContext ctx) {
+    CreateTriggerOperator createTriggerOperator =
+        new CreateTriggerOperator(SQLConstant.TOK_TRIGGER_CREATE);
+    createTriggerOperator.setTriggerName(ctx.triggerName.getText());
+    createTriggerOperator.setEvent(
+        ctx.triggerEventClause().BEFORE() != null
+            ? TriggerEvent.BEFORE_INSERT
+            : TriggerEvent.AFTER_INSERT);
+    createTriggerOperator.setFullPath(parseFullPath(ctx.fullPath()));
+    createTriggerOperator.setClassName(removeStringQuote(ctx.className.getText()));
+    if (ctx.triggerAttributeClause() != null) {
+      for (TriggerAttributeContext triggerAttributeContext :
+          ctx.triggerAttributeClause().triggerAttribute()) {
+        createTriggerOperator.addAttribute(
+            removeStringQuote(triggerAttributeContext.key.getText()),
+            removeStringQuote(triggerAttributeContext.value.getText()));
+      }
+    }
+    return createTriggerOperator;
+  }
+
+  @Override
+  public Operator visitDropTrigger(DropTriggerContext ctx) {
+    DropTriggerOperator dropTriggerOperator = new DropTriggerOperator(SQLConstant.TOK_TRIGGER_DROP);
+    dropTriggerOperator.setTriggerName(ctx.triggerName.getText());
+    return dropTriggerOperator;
+  }
+
+  @Override
+  public Operator visitStartTrigger(StartTriggerContext ctx) {
+    StartTriggerOperator startTriggerOperator =
+        new StartTriggerOperator(SQLConstant.TOK_TRIGGER_START);
+    startTriggerOperator.setTriggerName(ctx.triggerName.getText());
+    return startTriggerOperator;
+  }
+
+  @Override
+  public Operator visitStopTrigger(StopTriggerContext ctx) {
+    StopTriggerOperator stopTriggerOperator = new StopTriggerOperator(SQLConstant.TOK_TRIGGER_STOP);
+    stopTriggerOperator.setTriggerName(ctx.triggerName.getText());
+    return stopTriggerOperator;
+  }
+
+  @Override
+  public Operator visitShowTriggers(ShowTriggersContext ctx) {
+    return new ShowTriggersOperator(SQLConstant.TOK_SHOW_TRIGGERS);
   }
 
   @Override
@@ -779,6 +850,17 @@ public class IoTDBSqlVisitor extends SqlBaseBaseVisitor<Operator> {
     } else {
       return new ShowChildPathsOperator(
           SQLConstant.TOK_CHILD_PATHS, new PartialPath(SQLConstant.getSingleRootArray()));
+    }
+  }
+
+  @Override
+  public Operator visitShowChildNodes(ShowChildNodesContext ctx) {
+    if (ctx.prefixPath() != null) {
+      return new ShowChildNodesOperator(
+          SQLConstant.TOK_CHILD_NODES, parsePrefixPath(ctx.prefixPath()));
+    } else {
+      return new ShowChildNodesOperator(
+          SQLConstant.TOK_CHILD_NODES, new PartialPath(SQLConstant.getSingleRootArray()));
     }
   }
 
@@ -1254,6 +1336,9 @@ public class IoTDBSqlVisitor extends SqlBaseBaseVisitor<Operator> {
   }
 
   public void parseGroupByLevelClause(GroupByLevelClauseContext ctx, QueryOperator queryOp) {
+    if (!queryOp.hasAggregation()) {
+      throw new SQLParserException(GroupByTimePlan.LACK_FUNC_ERROR_MESSAGE);
+    }
     queryOp.setGroupByLevel(true);
     queryOp.setLevel(Integer.parseInt(ctx.INT().getText()));
   }
@@ -1345,6 +1430,9 @@ public class IoTDBSqlVisitor extends SqlBaseBaseVisitor<Operator> {
   }
 
   private void parseGroupByTimeClause(GroupByTimeClauseContext ctx, QueryOperator queryOp) {
+    if (!queryOp.hasAggregation()) {
+      throw new SQLParserException(GroupByTimePlan.LACK_FUNC_ERROR_MESSAGE);
+    }
     queryOp.setGroupByTime(true);
     queryOp.setLeftCRightO(ctx.timeInterval().LS_BRACKET() != null);
     // parse timeUnit
@@ -1370,6 +1458,9 @@ public class IoTDBSqlVisitor extends SqlBaseBaseVisitor<Operator> {
   }
 
   private void parseGroupByFillClause(GroupByFillClauseContext ctx, QueryOperator queryOp) {
+    if (!queryOp.hasAggregation()) {
+      throw new SQLParserException(GroupByTimePlan.LACK_FUNC_ERROR_MESSAGE);
+    }
     queryOp.setGroupByTime(true);
     queryOp.setFill(true);
     queryOp.setLeftCRightO(ctx.timeInterval().LS_BRACKET() != null);
@@ -1792,28 +1883,35 @@ public class IoTDBSqlVisitor extends SqlBaseBaseVisitor<Operator> {
   }
 
   private void parseInsertColumnSpec(InsertColumnsSpecContext ctx, InsertOperator insertOp) {
-    List<NodeNameWithoutStarContext> nodeNamesWithoutStar = ctx.nodeNameWithoutStar();
+    List<MeasurementNameContext> measurementNames = ctx.measurementName();
     List<String> measurementList = new ArrayList<>();
-    for (NodeNameWithoutStarContext nodeNameWithoutStar : nodeNamesWithoutStar) {
-      String measurement = nodeNameWithoutStar.getText();
+    for (MeasurementNameContext measurementName : measurementNames) {
+      String measurement = measurementName.getText();
       measurementList.add(measurement);
     }
     insertOp.setMeasurementList(measurementList.toArray(new String[0]));
   }
 
   private void parseInsertValuesSpec(InsertValuesSpecContext ctx, InsertOperator insertOp) {
-    long timestamp;
-    if (ctx.dateFormat() != null) {
-      timestamp = parseTimeFormat(ctx.dateFormat().getText());
-    } else {
-      timestamp = Long.parseLong(ctx.INT().getText());
-    }
-    insertOp.setTime(timestamp);
+    List<InsertMultiValueContext> insertMultiValues = ctx.insertMultiValue();
     List<String> valueList = new ArrayList<>();
-    List<ConstantContext> values = ctx.constant();
-    for (ConstantContext value : values) {
-      valueList.add(value.getText());
+    long[] timeArray = new long[insertMultiValues.size()];
+    for (int i = 0; i < insertMultiValues.size(); i++) {
+      long timestamp;
+      if (insertMultiValues.get(i).dateFormat() != null) {
+        timestamp = parseTimeFormat(insertMultiValues.get(i).dateFormat().getText());
+      } else {
+        timestamp = Long.parseLong(insertMultiValues.get(i).INT().getText());
+      }
+      timeArray[i] = timestamp;
+      List<MeasurementValueContext> values = insertMultiValues.get(i).measurementValue();
+      for (MeasurementValueContext value : values) {
+        for (ConstantContext counstant : value.constant()) {
+          valueList.add(counstant.getText());
+        }
+      }
     }
+    insertOp.setTimes(timeArray);
     insertOp.setValueList(valueList.toArray(new String[0]));
   }
 
@@ -1907,7 +2005,7 @@ public class IoTDBSqlVisitor extends SqlBaseBaseVisitor<Operator> {
     createTimeSeriesOperator.setDataType(tsDataType);
 
     final IoTDBDescriptor ioTDBDescriptor = IoTDBDescriptor.getInstance();
-    TSEncoding encoding = ioTDBDescriptor.getDefualtEncodingByType(tsDataType);
+    TSEncoding encoding = ioTDBDescriptor.getDefaultEncodingByType(tsDataType);
     if (Objects.nonNull(ctx.encoding())) {
       String encodingString = ctx.encoding().getChild(0).getText().toUpperCase();
       encoding = TSEncoding.valueOf(encodingString);

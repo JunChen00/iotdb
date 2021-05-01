@@ -43,7 +43,7 @@ public class LocalFileRoleManagerTest {
   private LocalFileRoleManager manager;
 
   @Before
-  public void setUp() throws Exception {
+  public void setUp() {
     EnvironmentUtils.envSetUp();
     testFolder = new File(TestConstant.BASE_OUTPUT_PATH.concat("test"));
     testFolder.mkdirs();
@@ -83,6 +83,12 @@ public class LocalFileRoleManagerTest {
     boolean caught = false;
     try {
       manager.createRole("too");
+    } catch (AuthException e) {
+      caught = true;
+    }
+    assertTrue(caught);
+    try {
+      manager.createRole("rolename ");
     } catch (AuthException e) {
       caught = true;
     }

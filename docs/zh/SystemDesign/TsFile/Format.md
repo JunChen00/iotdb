@@ -67,7 +67,7 @@
 
 下图是关于TsFile的结构图。
 
-<img style="width:100%; max-width:800px; max-height:600px; margin-left:auto; margin-right:auto; display:block;" src="https://user-images.githubusercontent.com/19167280/95296983-492cc500-08ac-11eb-9f66-c9c78401c61d.png">
+<img style="width:100%; max-width:800px; max-height:600px; margin-left:auto; margin-right:auto; display:block;" src="https://user-images.githubusercontent.com/37140360/109955373-6069c480-7d1d-11eb-9cae-252ea139abaa.jpg">
 
 此文件包括两个设备 d1、d2，每个设备包含两个测点 s1、s2，共 4 个时间序列。每个时间序列包含两个 Chunk。
 
@@ -210,7 +210,7 @@ PageHeader 结构
 
 为了更清楚的说明元数据索引树的结构，这里我们使用四个例子来加以详细说明。
 
-元数据索引树的最大度（即每个节点的最大子节点个数）是可以由用户进行配置的，配置项为`max_degree_of_index_node`，其默认值为1024。在以下例子中，为了简化，我们假定 `max_degree_of_index_node = 10`。
+元数据索引树的最大度（即每个节点的最大子节点个数）是可以由用户进行配置的，配置项为`max_degree_of_index_node`，其默认值为256。在以下例子中，为了简化，我们假定 `max_degree_of_index_node = 10`。
 
 <img style="width:100%; max-width:800px; max-height:600px; margin-left:auto; margin-right:auto; display:block;" src="https://user-images.githubusercontent.com/19167280/81935219-de3fd080-9622-11ea-9aa1-a59bef1c0001.png">
 
@@ -246,7 +246,7 @@ TsFile 是以6个字节的magic string (`TsFile`) 作为结束.
 
 #### 1.3.1 IoTDB Data Directory 快速概览工具
 
-该工具的启动脚本会在编译 server 之后生成至 `server\target\iotdb-server-0.10.0\tools\tsfileToolSet` 目录中。
+该工具的启动脚本会在编译 server 之后生成至 `server\target\iotdb-server-0.13.0-SNAPSHOT\tools\tsfileToolSet` 目录中。
 
 使用方式:
 
@@ -265,7 +265,7 @@ For Linux or MacOs:
 在Windows系统中的示例:
 
 ```
-D:\iotdb\server\target\iotdb-server-0.12.0-SNAPSHOT\tools\tsfileToolSet>.\print-iotdb-data-dir.bat D:\\data\data
+D:\iotdb\server\target\iotdb-server-0.13.0-SNAPSHOT\tools\tsfileToolSet>.\print-iotdb-data-dir.bat D:\\data\data
 ｜````````````````````````
 Starting Printing the IoTDB Data Directory Overview
 ​｜````````````````````````
@@ -295,7 +295,7 @@ TsFile data dir num:1
 
 #### 1.3.2 TsFileResource 打印工具
 
-该工具的启动脚本会在编译 server 之后生成至 `server\target\iotdb-server-0.10.0\tools\tsfileToolSet` 目录中。
+该工具的启动脚本会在编译 server 之后生成至 `server\target\iotdb-server-0.13.0-SNAPSHOT\tools\tsfileToolSet` 目录中。
 
 使用方式:
 
@@ -314,7 +314,7 @@ Linux or MacOs:
 在Windows系统中的示例:
 
 ```
-D:\iotdb\server\target\iotdb-server-0.10.0\tools\tsfileToolSet>.\print-tsfile-resource-files.bat D:\data\data\sequence\root.vehicle
+D:\iotdb\server\target\iotdb-server-0.13.0-SNAPSHOT\tools\tsfileToolSet>.\print-tsfile-resource-files.bat D:\data\data\sequence\root.vehicle
 ｜````````````````````````
 Starting Printing the TsFileResources
 ​｜````````````````````````
@@ -326,7 +326,7 @@ analyzing the resource file finished.
 
 #### 1.3.3 TsFile 描述工具
 
-该工具的启动脚本会在编译 server 之后生成至 `server\target\iotdb-server-0.10.0\tools\tsfileToolSet` 目录中。
+该工具的启动脚本会在编译 server 之后生成至 `server\target\iotdb-server-0.13.0-SNAPSHOT\tools\tsfileToolSet` 目录中。
 
 使用方式:
 
@@ -349,7 +349,7 @@ Linux or MacOs:
 在mac系统中的示例:
 
 ```
-/iotdb/server/target/iotdb-server-0.10.0/tools/tsfileToolSet$ ./print-tsfile-sketch.sh test.tsfile
+/iotdb/server/target/iotdb-server-0.13.0-SNAPSHOT/tools/tsfileToolSet$ ./print-tsfile-sketch.sh test.tsfile
 ｜````````````````````````
 Starting Printing the TsFile Sketch
 ｜​````````````````````````

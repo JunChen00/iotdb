@@ -55,7 +55,7 @@ public class IoTDBMetadataFetchIT {
   private DatabaseMetaData databaseMetaData;
   private static final Logger logger = LoggerFactory.getLogger(IoTDBMetadataFetchIT.class);
 
-  private static void insertSQL() throws ClassNotFoundException, SQLException {
+  private static void insertSQL() throws ClassNotFoundException {
     Class.forName(Config.JDBC_DRIVER_NAME);
     try (Connection connection =
             DriverManager.getConnection(
@@ -361,6 +361,41 @@ public class IoTDBMetadataFetchIT {
           Assert.assertEquals(standard, builder.toString());
         } catch (SQLException e) {
           logger.error("showChildPaths() failed", e);
+          fail(e.getMessage());
+        }
+      }
+    }
+  }
+
+  @Test
+  public void showChildNodes() throws SQLException, ClassNotFoundException {
+    Class.forName(Config.JDBC_DRIVER_NAME);
+    try (Connection connection =
+            DriverManager.getConnection(
+                Config.IOTDB_URL_PREFIX + "127.0.0.1:6667/", "root", "root");
+        Statement statement = connection.createStatement()) {
+      String[] sqls = new String[] {"show child nodes root.ln"};
+      String[] standards = new String[] {"wf01,\n"};
+      for (int n = 0; n < sqls.length; n++) {
+        String sql = sqls[n];
+        String standard = standards[n];
+        StringBuilder builder = new StringBuilder();
+        try {
+          boolean hasResultSet = statement.execute(sql);
+          if (hasResultSet) {
+            try (ResultSet resultSet = statement.getResultSet()) {
+              ResultSetMetaData resultSetMetaData = resultSet.getMetaData();
+              while (resultSet.next()) {
+                for (int i = 1; i <= resultSetMetaData.getColumnCount(); i++) {
+                  builder.append(resultSet.getString(i)).append(",");
+                }
+                builder.append("\n");
+              }
+            }
+          }
+          Assert.assertEquals(standard, builder.toString());
+        } catch (SQLException e) {
+          logger.error("showChildNodes() failed", e);
           fail(e.getMessage());
         }
       }

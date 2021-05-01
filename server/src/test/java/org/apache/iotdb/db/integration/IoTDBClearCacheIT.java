@@ -19,7 +19,6 @@
 package org.apache.iotdb.db.integration;
 
 import org.apache.iotdb.db.engine.cache.ChunkCache;
-import org.apache.iotdb.db.engine.cache.ChunkMetadataCache;
 import org.apache.iotdb.db.engine.cache.TimeSeriesMetadataCache;
 import org.apache.iotdb.db.utils.EnvironmentUtils;
 import org.apache.iotdb.jdbc.Config;
@@ -32,7 +31,6 @@ import org.junit.Test;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Statement;
 
 import static org.junit.Assert.assertFalse;
@@ -127,7 +125,7 @@ public class IoTDBClearCacheIT {
     EnvironmentUtils.cleanEnv();
   }
 
-  private static void importData() throws ClassNotFoundException, SQLException {
+  private static void importData() throws ClassNotFoundException {
     Class.forName(Config.JDBC_DRIVER_NAME);
     try (Connection connection =
             DriverManager.getConnection(
@@ -161,13 +159,11 @@ public class IoTDBClearCacheIT {
         Assert.assertEquals(10, cnt);
       }
       assertFalse(ChunkCache.getInstance().isEmpty());
-      assertFalse(ChunkMetadataCache.getInstance().isEmpty());
       assertFalse(TimeSeriesMetadataCache.getInstance().isEmpty());
 
       statement.execute("CLEAR CACHE");
 
       assertTrue(ChunkCache.getInstance().isEmpty());
-      assertTrue(ChunkMetadataCache.getInstance().isEmpty());
       assertTrue(TimeSeriesMetadataCache.getInstance().isEmpty());
 
     } catch (Exception e) {

@@ -39,12 +39,14 @@ import org.apache.iotdb.cluster.rpc.thrift.GroupByRequest;
 import org.apache.iotdb.cluster.rpc.thrift.HeartBeatRequest;
 import org.apache.iotdb.cluster.rpc.thrift.HeartBeatResponse;
 import org.apache.iotdb.cluster.rpc.thrift.LastQueryRequest;
+import org.apache.iotdb.cluster.rpc.thrift.MultSeriesQueryRequest;
 import org.apache.iotdb.cluster.rpc.thrift.Node;
 import org.apache.iotdb.cluster.rpc.thrift.PreviousFillRequest;
 import org.apache.iotdb.cluster.rpc.thrift.PullSchemaRequest;
 import org.apache.iotdb.cluster.rpc.thrift.PullSchemaResp;
 import org.apache.iotdb.cluster.rpc.thrift.PullSnapshotRequest;
 import org.apache.iotdb.cluster.rpc.thrift.PullSnapshotResp;
+import org.apache.iotdb.cluster.rpc.thrift.RequestCommitIndexResponse;
 import org.apache.iotdb.cluster.rpc.thrift.SendSnapshotRequest;
 import org.apache.iotdb.cluster.rpc.thrift.SingleSeriesQueryRequest;
 import org.apache.iotdb.cluster.rpc.thrift.TSDataService;
@@ -306,7 +308,8 @@ public class DataClusterServer extends RaftServer
   }
 
   @Override
-  public void requestCommitIndex(Node header, AsyncMethodCallback<Long> resultHandler) {
+  public void requestCommitIndex(
+      Node header, AsyncMethodCallback<RequestCommitIndexResponse> resultHandler) {
     DataAsyncService service = getDataAsyncService(header, resultHandler, "Request commit index");
     if (service != null) {
       service.requestCommitIndex(header, resultHandler);
@@ -335,12 +338,37 @@ public class DataClusterServer extends RaftServer
   }
 
   @Override
+  public void queryMultSeries(
+      MultSeriesQueryRequest request, AsyncMethodCallback<Long> resultHandler) throws TException {
+    DataAsyncService service =
+        getDataAsyncService(
+            request.getHeader(), resultHandler, "Query series:" + request.getPath());
+    if (service != null) {
+      service.queryMultSeries(request, resultHandler);
+    }
+  }
+
+  @Override
   public void fetchSingleSeries(
       Node header, long readerId, AsyncMethodCallback<ByteBuffer> resultHandler) {
     DataAsyncService service =
         getDataAsyncService(header, resultHandler, "Fetch reader:" + readerId);
     if (service != null) {
       service.fetchSingleSeries(header, readerId, resultHandler);
+    }
+  }
+
+  @Override
+  public void fetchMultSeries(
+      Node header,
+      long readerId,
+      List<String> paths,
+      AsyncMethodCallback<Map<String, ByteBuffer>> resultHandler)
+      throws TException {
+    DataAsyncService service =
+        getDataAsyncService(header, resultHandler, "Fetch reader:" + readerId);
+    if (service != null) {
+      service.fetchMultSeries(header, readerId, paths, resultHandler);
     }
   }
 
@@ -384,12 +412,15 @@ public class DataClusterServer extends RaftServer
   }
 
   @Override
-  public void fetchSingleSeriesByTimestamp(
-      Node header, long readerId, long time, AsyncMethodCallback<ByteBuffer> resultHandler) {
+  public void fetchSingleSeriesByTimestamps(
+      Node header,
+      long readerId,
+      List<Long> timestamps,
+      AsyncMethodCallback<ByteBuffer> resultHandler) {
     DataAsyncService service =
         getDataAsyncService(header, resultHandler, "Fetch by timestamp:" + readerId);
     if (service != null) {
-      service.fetchSingleSeriesByTimestamp(header, readerId, time, resultHandler);
+      service.fetchSingleSeriesByTimestamps(header, readerId, timestamps, resultHandler);
     }
   }
 
@@ -419,10 +450,26 @@ public class DataClusterServer extends RaftServer
   }
 
   @Override
+  public void getDevices(
+      Node header, ByteBuffer planBytes, AsyncMethodCallback<ByteBuffer> resultHandler)
+      throws TException {
+    DataAsyncService service = getDataAsyncService(header, resultHandler, "Get devices");
+    service.getDevices(header, planBytes, resultHandler);
+  }
+
+  @Override
   public void getNodeList(
       Node header, String path, int nodeLevel, AsyncMethodCallback<List<String>> resultHandler) {
     DataAsyncService service = getDataAsyncService(header, resultHandler, "Get node list");
     service.getNodeList(header, path, nodeLevel, resultHandler);
+  }
+
+  @Override
+  public void getChildNodeInNextLevel(
+      Node header, String path, AsyncMethodCallback<Set<String>> resultHandler) {
+    DataAsyncService service =
+        getDataAsyncService(header, resultHandler, "Get child node in next level");
+    service.getChildNodeInNextLevel(header, path, resultHandler);
   }
 
   @Override
@@ -484,13 +531,18 @@ public class DataClusterServer extends RaftServer
 
   @Override
   TServerTransport getServerSocket() throws TTransportException {
+    logger.info(
+        "[{}] Cluster node will listen {}:{}",
+        getServerClientName(),
+        config.getInternalIp(),
+        config.getInternalDataPort());
     if (ClusterDescriptor.getInstance().getConfig().isUseAsyncServer()) {
       return new TNonblockingServerSocket(
-          new InetSocketAddress(config.getClusterRpcIp(), thisNode.getDataPort()),
+          new InetSocketAddress(config.getInternalIp(), thisNode.getDataPort()),
           getConnectionTimeoutInMS());
     } else {
       return new TServerSocket(
-          new InetSocketAddress(config.getClusterRpcIp(), thisNode.getDataPort()));
+          new InetSocketAddress(config.getInternalIp(), thisNode.getDataPort()));
     }
   }
 
@@ -539,7 +591,11 @@ public class DataClusterServer extends RaftServer
   }
 
   private void removeMember(Node header, DataGroupMember dataGroupMember) {
-    dataGroupMember.syncLeader();
+    try {
+      dataGroupMember.syncLeader(null);
+    } catch (CheckConsistencyException e) {
+      logger.warn("Failed to check consistency.", e);
+    }
     dataGroupMember.setReadOnly();
     dataGroupMember.stop();
     stoppedMemberManager.put(header, dataGroupMember);
@@ -710,8 +766,19 @@ public class DataClusterServer extends RaftServer
   }
 
   @Override
+  public long queryMultSeries(MultSeriesQueryRequest request) throws TException {
+    return getDataSyncService(request.getHeader()).queryMultSeries(request);
+  }
+
+  @Override
   public ByteBuffer fetchSingleSeries(Node header, long readerId) throws TException {
     return getDataSyncService(header).fetchSingleSeries(header, readerId);
+  }
+
+  @Override
+  public Map<String, ByteBuffer> fetchMultSeries(Node header, long readerId, List<String> paths)
+      throws TException {
+    return getDataSyncService(header).fetchMultSeries(header, readerId, paths);
   }
 
   @Override
@@ -720,9 +787,9 @@ public class DataClusterServer extends RaftServer
   }
 
   @Override
-  public ByteBuffer fetchSingleSeriesByTimestamp(Node header, long readerId, long timestamp)
+  public ByteBuffer fetchSingleSeriesByTimestamps(Node header, long readerId, List<Long> timestamps)
       throws TException {
-    return getDataSyncService(header).fetchSingleSeriesByTimestamp(header, readerId, timestamp);
+    return getDataSyncService(header).fetchSingleSeriesByTimestamps(header, readerId, timestamps);
   }
 
   @Override
@@ -747,6 +814,11 @@ public class DataClusterServer extends RaftServer
   }
 
   @Override
+  public Set<String> getChildNodeInNextLevel(Node header, String path) throws TException {
+    return getDataSyncService(header).getChildNodeInNextLevel(header, path);
+  }
+
+  @Override
   public Set<String> getChildNodePathInNextLevel(Node header, String path) throws TException {
     return getDataSyncService(header).getChildNodePathInNextLevel(header, path);
   }
@@ -754,6 +826,11 @@ public class DataClusterServer extends RaftServer
   @Override
   public ByteBuffer getAllMeasurementSchema(Node header, ByteBuffer planBinary) throws TException {
     return getDataSyncService(header).getAllMeasurementSchema(header, planBinary);
+  }
+
+  @Override
+  public ByteBuffer getDevices(Node header, ByteBuffer planBinary) throws TException {
+    return getDataSyncService(header).getDevices(header, planBinary);
   }
 
   @Override
@@ -844,7 +921,7 @@ public class DataClusterServer extends RaftServer
   }
 
   @Override
-  public long requestCommitIndex(Node header) throws TException {
+  public RequestCommitIndexResponse requestCommitIndex(Node header) throws TException {
     return getDataSyncService(header).requestCommitIndex(header);
   }
 

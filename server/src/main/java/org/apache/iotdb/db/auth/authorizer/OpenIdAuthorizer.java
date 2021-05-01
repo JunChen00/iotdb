@@ -99,8 +99,7 @@ public class OpenIdAuthorizer extends BasicAuthorizer {
     logger.debug("Using Provider Metadata: {}", providerMetadata);
 
     try {
-      URL url =
-          new URI(providerMetadata.getJWKSetURI().toString().replace("http", "https")).toURL();
+      URL url = new URI(providerMetadata.getJWKSetURI().toString()).toURL();
       logger.debug("Using url {}", url);
       return getProviderRSAJWK(url.openStream());
     } catch (IOException e) {
@@ -202,7 +201,7 @@ public class OpenIdAuthorizer extends BasicAuthorizer {
   }
 
   @Override
-  public void createUser(String username, String password) throws AuthException {
+  public void createUser(String username, String password) {
     throwUnsupportedOperationException();
   }
 
@@ -212,7 +211,7 @@ public class OpenIdAuthorizer extends BasicAuthorizer {
   }
 
   @Override
-  public void deleteUser(String username) throws AuthException {
+  public void deleteUser(String username) {
     throwUnsupportedOperationException();
   }
 
@@ -276,7 +275,7 @@ public class OpenIdAuthorizer extends BasicAuthorizer {
   }
 
   @Override
-  public void updateUserPassword(String username, String newPassword) throws AuthException {
+  public void updateUserPassword(String username, String newPassword) {
     throwUnsupportedOperationException();
   }
 }

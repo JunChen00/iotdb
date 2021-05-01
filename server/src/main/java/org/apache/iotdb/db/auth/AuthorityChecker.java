@@ -53,15 +53,16 @@ public class AuthorityChecker {
     if (SUPER_USER.equals(username)) {
       return true;
     }
+
     int permission = translateToPermissionId(type);
     if (permission == -1) {
-      logger.error("OperateType not found. {}", type);
       return false;
     } else if (permission == PrivilegeType.MODIFY_PASSWORD.ordinal()
         && username.equals(targetUser)) {
       // a user can modify his own password
       return true;
     }
+
     if (!paths.isEmpty()) {
       for (PartialPath path : paths) {
         if (!checkOnePath(username, path, permission)) {
@@ -71,6 +72,7 @@ public class AuthorityChecker {
     } else {
       return checkOnePath(username, null, permission);
     }
+
     return true;
   }
 
@@ -124,14 +126,13 @@ public class AuthorityChecker {
       case SELECT:
       case FILTER:
       case GROUPBYTIME:
-      case SEQTABLESCAN:
-      case TABLESCAN:
       case QUERY_INDEX:
-      case MERGEQUERY:
       case AGGREGATION:
       case UDAF:
       case UDTF:
       case LAST:
+      case FILL:
+      case GROUP_BY_FILL:
         return PrivilegeType.READ_TIMESERIES.ordinal();
       case INSERT:
       case LOADDATA:
@@ -149,23 +150,16 @@ public class AuthorityChecker {
         return PrivilegeType.CREATE_FUNCTION.ordinal();
       case DROP_FUNCTION:
         return PrivilegeType.DROP_FUNCTION.ordinal();
-      case AUTHOR:
-      case METADATA:
-      case BASIC_FUNC:
-      case FILEREAD:
-      case FROM:
-      case FUNC:
-      case HASHTABLESCAN:
-      case JOIN:
-      case LIMIT:
-      case MERGEJOIN:
-      case NULL:
-      case ORDERBY:
-      case SFW:
-      case UNION:
-        logger.error("Illegal operator type authorization : {}", type);
-        return -1;
+      case CREATE_TRIGGER:
+        return PrivilegeType.CREATE_TRIGGER.ordinal();
+      case DROP_TRIGGER:
+        return PrivilegeType.DROP_TRIGGER.ordinal();
+      case START_TRIGGER:
+        return PrivilegeType.START_TRIGGER.ordinal();
+      case STOP_TRIGGER:
+        return PrivilegeType.STOP_TRIGGER.ordinal();
       default:
+        logger.error("Unrecognizable operator type ({}) for AuthorityChecker.", type);
         return -1;
     }
   }

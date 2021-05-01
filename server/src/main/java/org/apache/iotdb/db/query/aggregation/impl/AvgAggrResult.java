@@ -78,9 +78,7 @@ public class AvgAggrResult extends AggregateResult {
     } else {
       sum = statistics.getSumDoubleValue();
     }
-    avg =
-        avg * ((double) preCnt / cnt)
-            + ((double) statistics.getCount() / cnt) * sum / statistics.getCount();
+    avg = (avg * preCnt + sum) / cnt;
   }
 
   @Override
@@ -102,10 +100,19 @@ public class AvgAggrResult extends AggregateResult {
   @Override
   public void updateResultUsingTimestamps(
       long[] timestamps, int length, IReaderByTimestamp dataReader) throws IOException {
+    Object[] values = dataReader.getValuesInTimestamps(timestamps, length);
     for (int i = 0; i < length; i++) {
-      Object value = dataReader.getValueInTimestamp(timestamps[i]);
-      if (value != null) {
-        updateAvg(seriesDataType, value);
+      if (values[i] != null) {
+        updateAvg(seriesDataType, values[i]);
+      }
+    }
+  }
+
+  @Override
+  public void updateResultUsingValues(long[] timestamps, int length, Object[] values) {
+    for (int i = 0; i < length; i++) {
+      if (values[i] != null) {
+        updateAvg(seriesDataType, values[i]);
       }
     }
   }
@@ -131,8 +138,25 @@ public class AvgAggrResult extends AggregateResult {
         throw new UnSupportedDataTypeException(
             String.format("Unsupported data type in aggregation AVG : %s", type));
     }
-    avg = avg * ((double) cnt / (cnt + 1)) + val * (1.0 / (cnt + 1));
+    avg = (avg * cnt + val) / (cnt + 1);
     cnt++;
+  }
+
+  public void setAvgResult(TSDataType type, Object val) throws UnSupportedDataTypeException {
+    cnt = 1;
+    switch (type) {
+      case INT32:
+      case INT64:
+      case FLOAT:
+      case DOUBLE:
+        avg = (double) val;
+        break;
+      case TEXT:
+      case BOOLEAN:
+      default:
+        throw new UnSupportedDataTypeException(
+            String.format("Unsupported data type in aggregation AVG : %s", type));
+    }
   }
 
   @Override
@@ -147,9 +171,7 @@ public class AvgAggrResult extends AggregateResult {
       // avoid two empty results producing an NaN
       return;
     }
-    avg =
-        avg * ((double) cnt / (cnt + anotherAvg.cnt))
-            + anotherAvg.avg * ((double) anotherAvg.cnt / (cnt + anotherAvg.cnt));
+    avg = (avg * cnt + anotherAvg.avg * anotherAvg.cnt) / (cnt + anotherAvg.cnt);
     cnt += anotherAvg.cnt;
   }
 

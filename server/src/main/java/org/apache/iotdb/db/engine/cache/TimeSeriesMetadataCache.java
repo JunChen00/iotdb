@@ -25,6 +25,7 @@ import org.apache.iotdb.db.conf.IoTDBDescriptor;
 import org.apache.iotdb.db.query.control.FileReaderManager;
 import org.apache.iotdb.db.utils.TestOnly;
 import org.apache.iotdb.tsfile.common.cache.Accountable;
+import org.apache.iotdb.tsfile.file.metadata.ChunkMetadata;
 import org.apache.iotdb.tsfile.file.metadata.TimeseriesMetadata;
 import org.apache.iotdb.tsfile.read.TsFileSequenceReader;
 import org.apache.iotdb.tsfile.read.common.Path;
@@ -89,7 +90,11 @@ public class TimeSeriesMetadataCache {
                       + RamUsageEstimator.sizeOf(key.measurement)
                       + RamUsageEstimator.shallowSizeOf(value)
                       + RamUsageEstimator.sizeOf(value.getMeasurementId())
-                      + RamUsageEstimator.shallowSizeOf(value.getStatistics());
+                      + RamUsageEstimator.shallowSizeOf(value.getStatistics())
+                      + (((ChunkMetadata) value.getChunkMetadataList().get(0)).calculateRamSize()
+                              + RamUsageEstimator.NUM_BYTES_OBJECT_REF)
+                          * value.getChunkMetadataList().size()
+                      + RamUsageEstimator.shallowSizeOf(value.getChunkMetadataList());
               averageSize = ((averageSize * count) + currentSize) / (++count);
             } else if (count < 100000) {
               count++;
@@ -101,7 +106,11 @@ public class TimeSeriesMetadataCache {
                       + RamUsageEstimator.sizeOf(key.measurement)
                       + RamUsageEstimator.shallowSizeOf(value)
                       + RamUsageEstimator.sizeOf(value.getMeasurementId())
-                      + RamUsageEstimator.shallowSizeOf(value.getStatistics());
+                      + RamUsageEstimator.shallowSizeOf(value.getStatistics())
+                      + (((ChunkMetadata) value.getChunkMetadataList().get(0)).calculateRamSize()
+                              + RamUsageEstimator.NUM_BYTES_OBJECT_REF)
+                          * value.getChunkMetadataList().size()
+                      + RamUsageEstimator.shallowSizeOf(value.getChunkMetadataList());
               count = 1;
               currentSize = averageSize;
             }
@@ -114,9 +123,14 @@ public class TimeSeriesMetadataCache {
     return TimeSeriesMetadataCache.TimeSeriesMetadataCacheHolder.INSTANCE;
   }
 
-  @SuppressWarnings("squid:S1860") // Suppress synchronize warning
   public TimeseriesMetadata get(TimeSeriesMetadataCacheKey key, Set<String> allSensors)
       throws IOException {
+    return get(key, allSensors, false);
+  }
+
+  @SuppressWarnings("squid:S1860") // Suppress synchronize warning
+  public TimeseriesMetadata get(
+      TimeSeriesMetadataCacheKey key, Set<String> allSensors, boolean debug) throws IOException {
     if (!CACHE_ENABLE) {
       // bloom filter part
       TsFileSequenceReader reader = FileReaderManager.getInstance().get(key.filePath, true);
@@ -125,7 +139,7 @@ public class TimeSeriesMetadataCache {
           && !bloomFilter.contains(key.device + IoTDBConstant.PATH_SEPARATOR + key.measurement)) {
         return null;
       }
-      return reader.readTimeseriesMetadata(new Path(key.device, key.measurement));
+      return reader.readTimeseriesMetadata(new Path(key.device, key.measurement), false);
     }
 
     cacheRequestNum.incrementAndGet();
@@ -142,7 +156,7 @@ public class TimeSeriesMetadataCache {
       cacheHitNum.incrementAndGet();
       printCacheLog(true);
     } else {
-      if (config.isDebugOn()) {
+      if (debug) {
         DEBUG_LOGGER.info(
             "Cache miss: {}.{} in file: {}", key.device, key.measurement, key.filePath);
         DEBUG_LOGGER.info("Device: {}, all sensors: {}", key.device, allSensors);
@@ -166,7 +180,7 @@ public class TimeSeriesMetadataCache {
           TsFileSequenceReader reader = FileReaderManager.getInstance().get(key.filePath, true);
           BloomFilter bloomFilter = reader.readBloomFilter();
           if (bloomFilter != null && !bloomFilter.contains(path.getFullPath())) {
-            if (config.isDebugOn()) {
+            if (debug) {
               DEBUG_LOGGER.info("TimeSeries meta data {} is filter by bloomFilter!", key);
             }
             return null;
@@ -194,12 +208,12 @@ public class TimeSeriesMetadataCache {
       }
     }
     if (timeseriesMetadata == null) {
-      if (config.isDebugOn()) {
+      if (debug) {
         DEBUG_LOGGER.info("The file doesn't have this time series {}.", key);
       }
       return null;
     } else {
-      if (config.isDebugOn()) {
+      if (debug) {
         DEBUG_LOGGER.info(
             "Get timeseries: {}.{}  metadata in file: {}  from cache: {}.",
             key.device,

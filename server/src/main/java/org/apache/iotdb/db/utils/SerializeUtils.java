@@ -19,7 +19,6 @@
 
 package org.apache.iotdb.db.utils;
 
-import org.apache.iotdb.cluster.rpc.thrift.Node;
 import org.apache.iotdb.tsfile.common.conf.TSFileConfig;
 import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
 import org.apache.iotdb.tsfile.read.TimeValuePair;
@@ -30,7 +29,6 @@ import org.apache.iotdb.tsfile.utils.ReadWriteIOUtils;
 import org.apache.iotdb.tsfile.utils.TsPrimitiveType;
 
 import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -119,48 +117,7 @@ public class SerializeUtils {
     }
   }
 
-  public static void serialize(Node node, DataOutputStream dataOutputStream) {
-    try {
-      byte[] ipBytes = node.ip.getBytes();
-      dataOutputStream.writeInt(ipBytes.length);
-      dataOutputStream.write(ipBytes);
-      dataOutputStream.writeInt(node.metaPort);
-      dataOutputStream.writeInt(node.nodeIdentifier);
-      dataOutputStream.writeInt(node.dataPort);
-      dataOutputStream.writeInt(node.clientPort);
-    } catch (IOException e) {
-      // unreachable
-    }
-  }
-
-  public static void deserialize(Node node, ByteBuffer buffer) {
-    int ipLength = buffer.getInt();
-    byte[] ipBytes = new byte[ipLength];
-    buffer.get(ipBytes);
-    node.setIp(new String(ipBytes));
-    node.setMetaPort(buffer.getInt());
-    node.setNodeIdentifier(buffer.getInt());
-    node.setDataPort(buffer.getInt());
-    node.setClientPort(buffer.getInt());
-  }
-
-  public static void deserialize(Node node, DataInputStream stream) throws IOException {
-    int ipLength = stream.readInt();
-    byte[] ipBytes = new byte[ipLength];
-    int readSize = stream.read(ipBytes);
-    if (readSize != ipLength) {
-      throw new IOException(
-          String.format(
-              "No sufficient bytes read when deserializing the ip of " + "a " + "node: %d/%d",
-              readSize, ipLength));
-    }
-    node.setIp(new String(ipBytes));
-    node.setMetaPort(stream.readInt());
-    node.setNodeIdentifier(stream.readInt());
-    node.setDataPort(stream.readInt());
-    node.setClientPort(stream.readInt());
-  }
-
+  @SuppressWarnings("squid:S3776") // Suppress high Cognitive Complexity warning
   public static void serializeBatchData(BatchData batchData, DataOutputStream outputStream) {
     try {
       int length = batchData.length();
@@ -206,12 +163,49 @@ public class SerializeUtils {
             outputStream.writeInt(batchData.getIntByIndex(i));
           }
           break;
+        case VECTOR:
+          for (int i = 0; i < length; i++) {
+            outputStream.writeLong(batchData.getTimeByIndex(i));
+            TsPrimitiveType[] values = batchData.getVectorByIndex(i);
+            outputStream.writeInt(values.length);
+            for (TsPrimitiveType value : values) {
+              if (value == null) {
+                outputStream.write(0);
+              } else {
+                outputStream.write(1);
+                outputStream.write(value.getDataType().serialize());
+                switch (value.getDataType()) {
+                  case BOOLEAN:
+                    outputStream.writeBoolean(value.getBoolean());
+                    break;
+                  case DOUBLE:
+                    outputStream.writeDouble(value.getDouble());
+                    break;
+                  case FLOAT:
+                    outputStream.writeFloat(value.getFloat());
+                    break;
+                  case TEXT:
+                    Binary binary = value.getBinary();
+                    outputStream.writeInt(binary.getLength());
+                    outputStream.write(binary.getValues());
+                    break;
+                  case INT64:
+                    outputStream.writeLong(value.getLong());
+                    break;
+                  case INT32:
+                    outputStream.writeInt(value.getInt());
+                    break;
+                }
+              }
+            }
+          }
       }
     } catch (IOException ignored) {
       // ignored
     }
   }
 
+  @SuppressWarnings("squid:S3776") // Suppress high Cognitive Complexity warning
   public static BatchData deserializeBatchData(ByteBuffer buffer) {
     if (buffer == null || (buffer.limit() - buffer.position()) == 0) {
       return null;
@@ -253,6 +247,42 @@ public class SerializeUtils {
       case BOOLEAN:
         for (int i = 0; i < length; i++) {
           batchData.putBoolean(buffer.getLong(), buffer.get() == 1);
+        }
+        break;
+      case VECTOR:
+        for (int i = 0; i < length; i++) {
+          long time = buffer.getLong();
+          int valuesLength = buffer.getInt();
+          TsPrimitiveType[] values = new TsPrimitiveType[valuesLength];
+          for (int j = 0; j < valuesLength; j++) {
+            boolean notNull = (buffer.get() == 1);
+            if (notNull) {
+              switch (TSDataType.values()[buffer.get()]) {
+                case BOOLEAN:
+                  values[j] = new TsPrimitiveType.TsBoolean(buffer.get() == 1);
+                  break;
+                case DOUBLE:
+                  values[j] = new TsPrimitiveType.TsDouble(buffer.getDouble());
+                  break;
+                case FLOAT:
+                  values[j] = new TsPrimitiveType.TsFloat(buffer.getFloat());
+                  break;
+                case TEXT:
+                  int len = buffer.getInt();
+                  byte[] bytes = new byte[len];
+                  buffer.get(bytes);
+                  values[j] = new TsPrimitiveType.TsBinary(new Binary(bytes));
+                  break;
+                case INT64:
+                  values[j] = new TsPrimitiveType.TsLong(buffer.getLong());
+                  break;
+                case INT32:
+                  values[j] = new TsPrimitiveType.TsInt(buffer.getInt());
+                  break;
+              }
+            }
+          }
+          batchData.putVector(time, values);
         }
         break;
     }

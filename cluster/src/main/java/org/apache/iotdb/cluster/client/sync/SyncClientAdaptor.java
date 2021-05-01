@@ -40,7 +40,9 @@ import org.apache.iotdb.cluster.rpc.thrift.StartUpStatus;
 import org.apache.iotdb.cluster.rpc.thrift.TNodeStatus;
 import org.apache.iotdb.cluster.server.RaftServer;
 import org.apache.iotdb.cluster.server.handlers.caller.GenericHandler;
+import org.apache.iotdb.cluster.server.handlers.caller.GetChildNodeNextLevelHandler;
 import org.apache.iotdb.cluster.server.handlers.caller.GetChildNodeNextLevelPathHandler;
+import org.apache.iotdb.cluster.server.handlers.caller.GetDevicesHandler;
 import org.apache.iotdb.cluster.server.handlers.caller.GetNodesListHandler;
 import org.apache.iotdb.cluster.server.handlers.caller.GetTimeseriesSchemaHandler;
 import org.apache.iotdb.cluster.server.handlers.caller.JoinClusterHandler;
@@ -51,6 +53,7 @@ import org.apache.iotdb.cluster.server.handlers.forwarder.ForwardPlanHandler;
 import org.apache.iotdb.cluster.utils.PlanSerializer;
 import org.apache.iotdb.db.metadata.PartialPath;
 import org.apache.iotdb.db.qp.physical.PhysicalPlan;
+import org.apache.iotdb.db.qp.physical.sys.ShowDevicesPlan;
 import org.apache.iotdb.db.qp.physical.sys.ShowTimeSeriesPlan;
 import org.apache.iotdb.db.query.context.QueryContext;
 import org.apache.iotdb.db.utils.SerializeUtils;
@@ -59,7 +62,7 @@ import org.apache.iotdb.tsfile.read.filter.TimeFilter;
 import org.apache.iotdb.tsfile.read.filter.basic.Filter;
 import org.apache.iotdb.tsfile.read.filter.factory.FilterFactory;
 import org.apache.iotdb.tsfile.read.filter.operator.AndFilter;
-import org.apache.iotdb.tsfile.write.schema.MeasurementSchema;
+import org.apache.iotdb.tsfile.write.schema.IMeasurementSchema;
 import org.apache.iotdb.tsfile.write.schema.TimeseriesSchema;
 
 import org.apache.thrift.TException;
@@ -178,6 +181,22 @@ public class SyncClientAdaptor {
     return response.get();
   }
 
+  public static Set<String> getChildNodeInNextLevel(
+      AsyncDataClient client, Node header, String path) throws TException, InterruptedException {
+    GetChildNodeNextLevelHandler handler = new GetChildNodeNextLevelHandler();
+    AtomicReference<Set<String>> response = new AtomicReference<>(null);
+    handler.setResponse(response);
+    handler.setContact(client.getNode());
+
+    client.getChildNodeInNextLevel(header, path, handler);
+    synchronized (response) {
+      if (response.get() == null) {
+        response.wait(RaftServer.getReadOperationTimeoutMS());
+      }
+    }
+    return response.get();
+  }
+
   public static Set<String> getNextChildren(AsyncDataClient client, Node header, String path)
       throws TException, InterruptedException {
     GetChildNodeNextLevelPathHandler handler = new GetChildNodeNextLevelPathHandler();
@@ -266,10 +285,10 @@ public class SyncClientAdaptor {
     return response.get();
   }
 
-  public static List<MeasurementSchema> pullMeasurementSchema(
+  public static List<IMeasurementSchema> pullMeasurementSchema(
       AsyncDataClient client, PullSchemaRequest pullSchemaRequest)
       throws TException, InterruptedException {
-    AtomicReference<List<MeasurementSchema>> measurementSchemas = new AtomicReference<>();
+    AtomicReference<List<IMeasurementSchema>> measurementSchemas = new AtomicReference<>();
 
     client.pullMeasurementSchema(
         pullSchemaRequest,
@@ -357,6 +376,25 @@ public class SyncClientAdaptor {
 
     client.getAllDevices(header, pathsToQuery, handler);
     return handler.getResult(RaftServer.getReadOperationTimeoutMS());
+  }
+
+  public static ByteBuffer getDevices(AsyncDataClient client, Node header, ShowDevicesPlan plan)
+      throws InterruptedException, TException, IOException {
+    GetDevicesHandler handler = new GetDevicesHandler();
+    AtomicReference<ByteBuffer> response = new AtomicReference<>(null);
+    handler.setResponse(response);
+    handler.setContact(client.getNode());
+    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+    DataOutputStream dataOutputStream = new DataOutputStream(byteArrayOutputStream);
+    plan.serialize(dataOutputStream);
+
+    client.getDevices(header, ByteBuffer.wrap(byteArrayOutputStream.toByteArray()), handler);
+    synchronized (handler) {
+      if (response.get() == null) {
+        response.wait(RaftServer.getReadOperationTimeoutMS());
+      }
+    }
+    return response.get();
   }
 
   public static Long getGroupByExecutor(AsyncDataClient client, GroupByRequest request)

@@ -18,6 +18,8 @@
  */
 package org.apache.iotdb.db.qp.physical.crud;
 
+import org.apache.iotdb.db.exception.metadata.IllegalPathException;
+import org.apache.iotdb.db.exception.query.QueryProcessException;
 import org.apache.iotdb.db.metadata.PartialPath;
 import org.apache.iotdb.db.qp.logical.Operator;
 import org.apache.iotdb.db.qp.physical.PhysicalPlan;
@@ -39,6 +41,10 @@ public abstract class QueryPlan extends PhysicalPlan {
   private boolean ascending = true;
 
   private Map<String, Integer> pathToIndex = new HashMap<>();
+
+  private Map<String, Integer> vectorPathToIndex = new HashMap<>();
+
+  private boolean enableRedirect = false;
 
   public QueryPlan() {
     super(true);
@@ -91,12 +97,16 @@ public abstract class QueryPlan extends PhysicalPlan {
     return alignByTime;
   }
 
-  public void setAlignByTime(boolean align) {
+  public void setAlignByTime(boolean align) throws QueryProcessException {
     alignByTime = align;
   }
 
   public void addPathToIndex(String columnName, Integer index) {
     pathToIndex.put(columnName, index);
+  }
+
+  public void setPathToIndex(Map<String, Integer> pathToIndex) {
+    this.pathToIndex = pathToIndex;
   }
 
   public Map<String, Integer> getPathToIndex() {
@@ -109,5 +119,35 @@ public abstract class QueryPlan extends PhysicalPlan {
 
   public void setAscending(boolean ascending) {
     this.ascending = ascending;
+  }
+
+  public String getColumnForReaderFromPath(PartialPath path, int pathIndex) {
+    String columnForReader = path.isTsAliasExists() ? path.getTsAlias() : null;
+    if (columnForReader == null) {
+      columnForReader =
+          path.isMeasurementAliasExists() ? path.getFullPathWithAlias() : path.toString();
+    }
+    return columnForReader;
+  }
+
+  public String getColumnForDisplay(String columnForReader, int pathIndex)
+      throws IllegalPathException {
+    return columnForReader;
+  }
+
+  public boolean isEnableRedirect() {
+    return enableRedirect;
+  }
+
+  public void setEnableRedirect(boolean enableRedirect) {
+    this.enableRedirect = enableRedirect;
+  }
+
+  public Map<String, Integer> getVectorPathToIndex() {
+    return vectorPathToIndex;
+  }
+
+  public void setVectorPathToIndex(Map<String, Integer> vectorPathToIndex) {
+    this.vectorPathToIndex = vectorPathToIndex;
   }
 }

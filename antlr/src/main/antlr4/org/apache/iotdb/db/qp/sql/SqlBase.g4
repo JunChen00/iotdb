@@ -20,7 +20,7 @@
 grammar SqlBase;
 
 singleStatement
-    : statement EOF
+    : DEBUG? statement (';')? EOF
     ;
 
 /*
@@ -77,6 +77,7 @@ statement
     | SHOW LATEST? TIMESERIES prefixPath? showWhereClause? limitClause? #showTimeseries
     | SHOW STORAGE GROUP prefixPath? #showStorageGroup
     | SHOW CHILD PATHS prefixPath? #showChildPaths
+    | SHOW CHILD NODES prefixPath? #showChildNodes
     | SHOW DEVICES prefixPath? (WITH STORAGE GROUP)? limitClause? #showDevices
     | SHOW MERGE #showMergeStatus
     | SHOW QUERY PROCESSLIST #showQueryProcesslist
@@ -96,6 +97,12 @@ statement
     | CREATE TEMPORARY? FUNCTION udfName=ID AS className=stringLiteral #createFunction
     | DROP FUNCTION udfName=ID #dropFunction
     | SHOW TEMPORARY? FUNCTIONS #showFunctions
+    | CREATE TRIGGER triggerName=ID triggerEventClause ON fullPath
+      AS className=stringLiteral triggerAttributeClause? #createTrigger
+    | DROP TRIGGER triggerName=ID #dropTrigger
+    | START TRIGGER triggerName=ID #startTrigger
+    | STOP TRIGGER triggerName=ID #stopTrigger
+    | SHOW TRIGGERS #showTriggers
     | SELECT topClause? selectElements
     fromClause
     whereClause?
@@ -367,12 +374,25 @@ comparisonOperator
     ;
 
 insertColumnsSpec
-    : LR_BRACKET (TIMESTAMP|TIME) (COMMA nodeNameWithoutStar)+ RR_BRACKET
+    : LR_BRACKET (TIMESTAMP|TIME) (COMMA measurementName)+ RR_BRACKET
+    ;
+measurementName
+    : nodeNameWithoutStar
+    | LR_BRACKET nodeNameWithoutStar (COMMA nodeNameWithoutStar)+ RR_BRACKET
     ;
 
 insertValuesSpec
-    : LR_BRACKET dateFormat (COMMA constant)+ RR_BRACKET
-    | LR_BRACKET INT (COMMA constant)+ RR_BRACKET
+    :(COMMA? insertMultiValue)*
+    ;
+
+insertMultiValue
+    : LR_BRACKET dateFormat (COMMA measurementValue)+ RR_BRACKET
+    | LR_BRACKET INT (COMMA measurementValue)+ RR_BRACKET
+    ;
+
+measurementValue
+    : constant
+    | LR_BRACKET constant (COMMA constant)+ RR_BRACKET
     ;
 
 setCol
@@ -657,6 +677,7 @@ constant
     | MINUS? INT
     | stringLiteral
     | booleanClause
+    | NULL
     ;
 
 booleanClause
@@ -685,6 +706,18 @@ property
 autoCreateSchema
     : booleanClause
     | booleanClause INT
+    ;
+
+triggerEventClause
+    : (BEFORE | AFTER) INSERT
+    ;
+
+triggerAttributeClause
+    : WITH LR_BRACKET triggerAttribute (COMMA triggerAttribute)* RR_BRACKET
+    ;
+
+triggerAttribute
+    : key=stringLiteral OPERATOR_EQ value=stringLiteral
     ;
 
 //============================
@@ -1216,6 +1249,30 @@ AS
     : A S
     ;
 
+TRIGGER
+    : T R I G G E R
+    ;
+
+TRIGGERS
+    : T R I G G E R S
+    ;
+
+BEFORE
+    : B E F O R E
+    ;
+
+AFTER
+    : A F T E R
+    ;
+
+START
+    : S T A R T
+    ;
+
+STOP
+    : S T O P
+    ;
+
 DESC
     : D E S C
     ;
@@ -1242,6 +1299,19 @@ LIKE
 TOLERANCE
     : T O L E R A N C E
     ;
+
+EXPLAIN
+    : E X P L A I N
+    ;
+
+DEBUG
+    : D E B U G
+    ;
+
+NULL
+    : N U L L
+    ;
+
 //============================
 // End of the keywords list
 //============================

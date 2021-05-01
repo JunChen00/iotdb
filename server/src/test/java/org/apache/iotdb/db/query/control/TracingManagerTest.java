@@ -23,7 +23,6 @@ import org.apache.iotdb.db.conf.IoTDBDescriptor;
 import org.apache.iotdb.db.constant.TestConstant;
 import org.apache.iotdb.db.engine.fileSystem.SystemFileFactory;
 import org.apache.iotdb.db.engine.storagegroup.TsFileResource;
-import org.apache.iotdb.db.exception.StorageEngineException;
 import org.apache.iotdb.db.utils.EnvironmentUtils;
 
 import org.apache.commons.io.FileUtils;
@@ -52,19 +51,22 @@ public class TracingManagerTest {
   private Set<TsFileResource> seqResources = new HashSet<>();
 
   @Before
-  public void setUp() throws Exception {
+  public void setUp() {
     tracingManager = TracingManager.getInstance();
     prepareTsFileResources();
   }
 
   @After
-  public void tearDown() throws IOException, StorageEngineException {
+  public void tearDown() throws IOException {
     FileUtils.deleteDirectory(new File(tracingDir));
     EnvironmentUtils.cleanAllDir();
   }
 
   @Test
   public void tracingQueryTest() throws IOException {
+    if (!tracingManager.getWriterStatus()) {
+      tracingManager.openTracingWriteStream();
+    }
     String[] ans = {
       "Query Id: 10 - Query Statement: " + sql,
       "Query Id: 10 - Start time: 2020-12-",
